@@ -1,127 +1,32 @@
-import { useState, useEffect, useRef } from "react";
-import { createWorker } from "tesseract.js";
-import leftPad from "just-left-pad";
-
-const HIGHLIGHT_COLOR = { r: 228, g: 159, b: 68 }; // #e49f44
-const COLOR_TOLERANCE = 60;
-const CAPTURE_RATIO = 1 / 4;
-const FPS = 60;
-
-type Byte = [string, string, string, string, string, string, string, string];
-const numberToByte = (num: number): Byte => {
-  const binaryString = leftPad(num.toString(2), 8, "0");
-  return binaryString.split("") as Byte;
-}
-
-const getOCRWorker = (() => {
-  let once;
-  return async () => {
-    return (once ||= await createWorker("eng"));
-  };
-})();
-
-const parseBinaryFromScreen = async (bitmap: ImageBitmap): Promise<Byte> => {
-  if (!bitmap) {
-    return numberToByte(0);
-  }
-
-  try {
-    const captureWidth = bitmap.width * CAPTURE_RATIO;
-    const captureHeight = bitmap.height * CAPTURE_RATIO;
-    const captureX = (bitmap.width - captureWidth) / 2;
-    const captureY = (bitmap.height - captureHeight) / 2;
-
-    const canvas = document.createElement("canvas");
-    canvas.width = captureWidth;
-    canvas.height = captureHeight;
-    const context = canvas.getContext("2d");
-
-    context?.drawImage(
-      bitmap,
-      captureX,
-      captureY,
-      captureWidth,
-      captureHeight,
-      0,
-      0,
-      captureWidth,
-      captureHeight
-    );
-
-    const image = context?.getImageData(0, 0, captureWidth, captureHeight);
-    const filteredData = filterColor(
-      image?.data,
-      HIGHLIGHT_COLOR,
-      COLOR_TOLERANCE
-    );
-    const data = new ImageData(filteredData, captureWidth, captureHeight);
-    context?.putImageData(data, 0, 0);
-
-    const number = await performOCR(canvas);
-    return numberToByte(number || 0);
-  } catch (error) {
-    console.error("Failed to process:", error);
-    return numberToByte(0);
-  }
-};
-
-const filterColor = (
-  pixels: Uint8ClampedArray | void,
-  targetColor: { r: number; g: number; b: number },
-  tolerance: number
-) => {
-  if (!pixels) {
-    return new Uint8ClampedArray();
-  }
-
-  const newPixels = new Uint8ClampedArray(pixels.length);
-
-  for (let i = 0; i < pixels.length; i += 4) {
-    const r = pixels[i];
-    const g = pixels[i + 1];
-    const b = pixels[i + 2];
-    const distance = Math.sqrt(
-      Math.pow(r - targetColor.r, 2) +
-        Math.pow(g - targetColor.g, 2) +
-        Math.pow(b - targetColor.b, 2)
-    );
-    if (distance <= tolerance) {
-      newPixels[i] = r;
-      newPixels[i + 1] = g;
-      newPixels[i + 2] = b;
-      newPixels[i + 3] = 255;
-    } else {
-      newPixels[i + 3] = 0;
-    }
-  }
-
-  return newPixels;
-};
-
-const performOCR = async (canvas: HTMLCanvasElement) => {
-  try {
-    const worker = await getOCRWorker();
-    const {
-      data: { text },
-    } = await worker.recognize(canvas);
-    const numbers = text.match(/\d+/g);
-    return numbers ? parseInt(numbers[0]) : null;
-  } catch (error) {
-    console.error("Failed to OCR:", error);
-    return null;
-  }
-};
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useInterval } from "ahooks";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Link from "@mui/material/Link";
+import Divider from "@mui/material/Divider";
+import Button from "@mui/material/Button";
+import Box from "@mui/material/Box";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+import PreviewIcon from "@mui/icons-material/Preview";
+import BlurCircularIcon from "@mui/icons-material/BlurCircular";
+import { cn } from "@sglara/cn";
+import { processScreen } from "./process";
+import { numberToByte, getOCRWorker } from "./utils";
+import type { PreviewMode } from "./interfaces";
+import { FPS } from "./config";
 
 const App = () => {
-  const [binary, setBinary] = useState<Byte>(['0','0','0','0','0','0','0','0']);
+  const [number, setNumber] = useState(0);
   const [capturing, setCapturing] = useState(false);
-  const $canvas = useRef<HTMLCanvasElement>(document.createElement("canvas"));
+  const [previewMode, setPreviewMode] = useState<PreviewMode>("original");
   const [stream, setStream] = useState<MediaStream>();
+  const $canvas = useRef<HTMLCanvasElement>(document.createElement("canvas"));
 
-  const [timer, setTimer] = useState<number>();
+  const byte = useMemo(() => numberToByte(number), [number]);
 
   const stop = () => {
-    clearInterval(timer);
     if (stream?.active) {
       stream?.getTracks().forEach((track) => track.stop());
     }
@@ -129,60 +34,127 @@ const App = () => {
   };
 
   const start = async () => {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: false,
-    });
-    setStream(stream);
-
-    stream.addEventListener("removetrack", () => {
-      console.log("remove track");
-    });
-
-    const video = stream.getVideoTracks()[0];
-    const capture = new ImageCapture(video);
-
-    setTimer(
-      setInterval(async () => {
-        try {
-          if (!stream.active) {
-            stop();
-            return;
-          }
-          setCapturing(true);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const bitmap: ImageBitmap = await (capture as any).grabFrame();
-          $canvas.current.width = bitmap.width;
-          $canvas.current.height = bitmap.height;
-          $canvas.current?.getContext("2d")?.drawImage(bitmap, 0, 0);
-          setBinary(await parseBinaryFromScreen(bitmap));
-        } catch (error) {
-          console.error(error);
-        }
-      }, 1000 / FPS)
+    setStream(
+      await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      })
     );
   };
+
+  const handleClickPreviewMode = useCallback(
+    (_: React.MouseEvent<HTMLElement>, newAlignment: PreviewMode) => {
+      setPreviewMode(newAlignment);
+    },
+    []
+  );
+
+  useInterval(async () => {
+    try {
+      if (!stream?.active) {
+        stop();
+        return;
+      }
+      setCapturing(true);
+      const video = stream.getVideoTracks()[0];
+      const capture = new ImageCapture(video);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const bitmap: ImageBitmap = await (capture as any).grabFrame();
+      if ($canvas.current) {
+        $canvas.current.width = bitmap.width;
+        $canvas.current.height = bitmap.height;
+        $canvas.current?.getContext("2d")?.drawImage(bitmap, 0, 0);
+      }
+      setNumber(await processScreen(bitmap, $canvas.current, previewMode));
+    } catch (error) {
+      console.error(error);
+    }
+  }, 1000 / FPS);
 
   useEffect(() => {
     getOCRWorker();
   }, []);
 
   return (
-    <div className="App">
-      {capturing && <canvas ref={$canvas} />}
-      <div>
-        {capturing ? (
-          <button type="button" onClick={stop}>
-            stop
-          </button>
-        ) : (
-          <button type="button" onClick={start}>
-            start
-          </button>
-        )}
-      </div>
-      <div>{binary}</div>
-    </div>
+    <Box className="flex flex-col items-center py-8 gap-4">
+      <Card variant="outlined">
+        <CardContent className="flex flex-col gap-4">
+          <Box
+            className={cn(
+              "text-4xl font-mono text-center",
+              !capturing ? "text-gray-400" : "text-yellow-500"
+            )}
+          >
+            {!capturing ? "-" : number}
+          </Box>
+          <Box className="flex justify-center gap-2">
+            {byte.map((bit, index) => (
+              <Box
+                key={index}
+                className={cn(
+                  "w-10 h-10 flex justify-center items-center rounded-full text-white",
+                  !capturing
+                    ? "bg-gray-400"
+                    : bit === "1"
+                    ? "bg-emerald-600"
+                    : "bg-orange-600"
+                )}
+              >
+                {Math.pow(2, 7 - index)}
+              </Box>
+            ))}
+          </Box>
+          <Divider />
+          <Box className="flex justify-between items-center">
+            {capturing ? (
+              <Button variant="outlined" onClick={stop} className="w-20">
+                stop
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                onClick={start}
+                className="bg-blue-500 text-white py-2 px-4 rounded-2xl text-white"
+              >
+                start
+              </Button>
+            )}
+            <ToggleButtonGroup
+              color="primary"
+              value={previewMode}
+              exclusive
+              onChange={handleClickPreviewMode}
+              className="ml-4"
+              disabled={!capturing}
+              size="small"
+            >
+              <ToggleButton value="hide">
+                <VisibilityOffIcon />
+              </ToggleButton>
+              <ToggleButton value="original">
+                <PreviewIcon />
+              </ToggleButton>
+              <ToggleButton value="filter">
+                <BlurCircularIcon />
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        </CardContent>
+      </Card>
+      <Link
+        href="https://store.steampowered.com/app/1444480/Turing_Complete/"
+        target="_blank"
+      >
+        Turing Complete
+      </Link>
+      {capturing && previewMode !== "hide" && (
+        <Card>
+          <CardContent>
+            <canvas ref={$canvas} />
+          </CardContent>
+        </Card>
+      )}
+    </Box>
   );
 };
 
