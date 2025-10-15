@@ -14,17 +14,22 @@ import BlurCircularIcon from "@mui/icons-material/BlurCircular";
 import { cn } from "@sglara/cn";
 import { processScreen } from "./process";
 import { numberToByte, getOCRWorker } from "./utils";
-import type { PreviewMode } from "./interfaces";
+import type { PreviewMode, QuestionMode } from "./interfaces";
 import { FPS } from "./config";
 
 const App = () => {
-  const [number, setNumber] = useState(0);
+  const [question, setQuestion] = useState("");
+  const [questionMode, setQuestionMode] =
+    useState<QuestionMode>("decimal-to-binary");
   const [capturing, setCapturing] = useState(false);
   const [previewMode, setPreviewMode] = useState<PreviewMode>("original");
   const [stream, setStream] = useState<MediaStream>();
   const $canvas = useRef<HTMLCanvasElement>(document.createElement("canvas"));
 
-  const byte = useMemo(() => numberToByte(number), [number]);
+  const byte = useMemo(
+    () => numberToByte(question, questionMode),
+    [question, questionMode]
+  );
 
   const stop = () => {
     if (stream?.active) {
@@ -42,9 +47,16 @@ const App = () => {
     );
   };
 
+  const handleClickQuestionMode = useCallback(
+    (_: React.MouseEvent<HTMLElement>, mode: QuestionMode) => {
+      setQuestionMode(mode);
+    },
+    []
+  );
+
   const handleClickPreviewMode = useCallback(
-    (_: React.MouseEvent<HTMLElement>, newAlignment: PreviewMode) => {
-      setPreviewMode(newAlignment);
+    (_: React.MouseEvent<HTMLElement>, mode: PreviewMode) => {
+      setPreviewMode(mode);
     },
     []
   );
@@ -65,7 +77,7 @@ const App = () => {
         $canvas.current.height = bitmap.height;
         $canvas.current?.getContext("2d")?.drawImage(bitmap, 0, 0);
       }
-      setNumber(await processScreen(bitmap, $canvas.current, previewMode));
+      setQuestion(await processScreen(bitmap, $canvas.current, previewMode));
     } catch (error) {
       console.error(error);
     }
@@ -85,7 +97,7 @@ const App = () => {
               !capturing ? "text-gray-400" : "text-yellow-500"
             )}
           >
-            {!capturing ? "-" : number}
+            {!capturing ? "-" : question}
           </Box>
           <Box className="flex justify-center gap-2">
             {byte.map((bit, index) => (
@@ -119,32 +131,40 @@ const App = () => {
                 start
               </Button>
             )}
-            <ToggleButtonGroup
-              color="primary"
-              value={previewMode}
-              exclusive
-              onChange={handleClickPreviewMode}
-              className="ml-4"
-              disabled={!capturing}
-              size="small"
-            >
-              <ToggleButton value="hide">
-                <VisibilityOffIcon />
-              </ToggleButton>
-              <ToggleButton value="original">
-                <PreviewIcon />
-              </ToggleButton>
-              <ToggleButton value="filter">
-                <BlurCircularIcon />
-              </ToggleButton>
-            </ToggleButtonGroup>
+            <Box className="flex gap-2">
+              <ToggleButtonGroup
+                color="primary"
+                value={questionMode}
+                exclusive
+                onChange={handleClickQuestionMode}
+                size="small"
+              >
+                <ToggleButton value="decimal-to-binary">Decimal</ToggleButton>
+                <ToggleButton value="hex-to-binary">Hex</ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup
+                color="primary"
+                value={previewMode}
+                exclusive
+                onChange={handleClickPreviewMode}
+                disabled={!capturing}
+                size="small"
+              >
+                <ToggleButton value="hide">
+                  <VisibilityOffIcon />
+                </ToggleButton>
+                <ToggleButton value="original">
+                  <PreviewIcon />
+                </ToggleButton>
+                <ToggleButton value="filter">
+                  <BlurCircularIcon />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
           </Box>
         </CardContent>
       </Card>
-      <Link
-        href="https://turingcomplete.game/"
-        target="_blank"
-      >
+      <Link href="https://turingcomplete.game/" target="_blank">
         Turing Complete
       </Link>
       {capturing && previewMode !== "hide" && (

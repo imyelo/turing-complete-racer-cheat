@@ -1,9 +1,13 @@
 import { createWorker } from "tesseract.js";
 import leftPad from "just-left-pad";
-import type { Byte } from "./interfaces";
+import type { Byte, QuestionMode } from "./interfaces";
 
-export const numberToByte = (num: number): Byte => {
-  const binaryString = leftPad(num.toString(2), 8, "0");
+export const numberToByte = (num: string, mode: QuestionMode): Byte => {
+  const binaryString = leftPad(
+    parseInt(num, mode === "hex-to-binary" ? 16 : 10).toString(2),
+    8,
+    "0"
+  );
   return binaryString.split("") as Byte;
 };
 

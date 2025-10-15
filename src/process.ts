@@ -1,4 +1,9 @@
-import { CAPTURE_HEIGHT_RATIO, CAPTURE_WIDTH_RATIO, COLOR_TOLERANCE, HIGHLIGHT_COLOR } from "./config";
+import {
+  CAPTURE_HEIGHT_RATIO,
+  CAPTURE_WIDTH_RATIO,
+  COLOR_TOLERANCE,
+  HIGHLIGHT_COLOR,
+} from "./config";
 import { getOCRWorker } from "./utils";
 import type { PreviewMode } from "./interfaces";
 
@@ -6,9 +11,9 @@ export const processScreen = async (
   bitmap: ImageBitmap,
   source: HTMLCanvasElement,
   previewMode: PreviewMode
-): Promise<number> => {
+): Promise<string> => {
   if (!bitmap) {
-    return 0;
+    return "";
   }
 
   try {
@@ -54,10 +59,10 @@ export const processScreen = async (
       sourceContext.strokeRect(captureX, captureY, captureWidth, captureHeight);
     }
 
-    return (await performOCR(filter)) || 0;
+    return (await performOCR(filter)) || "";
   } catch (error) {
     console.error("Failed to process:", error);
-    return 0;
+    return "";
   }
 };
 
@@ -100,8 +105,7 @@ const performOCR = async (canvas: HTMLCanvasElement) => {
     const {
       data: { text },
     } = await worker.recognize(canvas);
-    const numbers = text.match(/\d+/g);
-    return numbers ? parseInt(numbers[0]) : null;
+    return text;
   } catch (error) {
     console.error("Failed to OCR:", error);
     return null;
