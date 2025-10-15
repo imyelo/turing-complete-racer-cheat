@@ -142,7 +142,7 @@ const App = () => {
         </CardContent>
       </Card>
       <Link
-        href="https://store.steampowered.com/app/1444480/Turing_Complete/"
+        href="https://turingcomplete.game/"
         target="_blank"
       >
         Turing Complete
