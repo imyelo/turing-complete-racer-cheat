@@ -93,13 +93,13 @@ const App = () => {
         <CardContent className="flex flex-col gap-4">
           <Box
             className={cn(
-              "text-4xl font-mono text-center",
+              "text-4xl font-mono text-center select-none",
               !capturing ? "text-gray-400" : "text-yellow-500"
             )}
           >
             {!capturing ? "-" : question}
           </Box>
-          <Box className="flex justify-center gap-2">
+          <Box className="flex justify-center gap-2 select-none">
             {byte.map((bit, index) => (
               <Box
                 key={index}
@@ -162,15 +162,34 @@ const App = () => {
               </ToggleButtonGroup>
             </Box>
           </Box>
+          <Box className="flex justify-between gap-2 text-xs">
+            <Link href="https://turingcomplete.game/" target="_blank">
+              Turing Complete{" "}
+              <Link
+                href="https://store.steampowered.com/app/1444480/"
+                target="_blank"
+              >
+                (Steam)
+              </Link>
+            </Link>
+            <Box className="flex gap-2">
+              <Link
+                href="https://github.com/imyelo/turing-complete-racer"
+                target="_blank"
+              >
+                github
+              </Link>
+              <Link href="https://yelo.cc/" target="_blank">
+                @yelo
+              </Link>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
-      <Link href="https://turingcomplete.game/" target="_blank">
-        Turing Complete
-      </Link>
       {capturing && previewMode !== "hide" && (
         <Card>
-          <CardContent>
-            <canvas ref={$canvas} />
+          <CardContent className="w-120">
+            <canvas ref={$canvas} className="max-w-full" />
           </CardContent>
         </Card>
       )}

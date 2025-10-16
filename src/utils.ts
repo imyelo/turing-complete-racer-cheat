@@ -1,6 +1,7 @@
 import { createWorker } from "tesseract.js";
 import leftPad from "just-left-pad";
 import type { Byte, QuestionMode } from "./interfaces";
+import { OCR_CHAR_WHITELIST } from "./config";
 
 export const numberToByte = (num: string, mode: QuestionMode): Byte => {
   const binaryString = leftPad(
@@ -12,8 +13,17 @@ export const numberToByte = (num: string, mode: QuestionMode): Byte => {
 };
 
 export const getOCRWorker = (() => {
-  let once;
+  let once: ReturnType<typeof createWorker>;
   return async () => {
-    return (once ||= await createWorker("eng"));
+    if (!once) {
+      once = (async () => {
+        const worker = await createWorker("eng");
+        await worker.setParameters({
+          tessedit_char_whitelist: OCR_CHAR_WHITELIST,
+        });
+        return worker;
+      })();
+    }
+    return once;
   };
 })();
